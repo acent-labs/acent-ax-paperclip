@@ -9,6 +9,9 @@ import { httpLogger, errorHandler } from "./middleware/index.js";
 import { actorMiddleware } from "./middleware/auth.js";
 import { boardMutationGuard } from "./middleware/board-mutation-guard.js";
 import { privateHostnameGuard, resolvePrivateHostnameAllowSet } from "./middleware/private-hostname-guard.js";
+import { tenantDbContextMiddleware } from "./middleware/tenant-db-context.js";
+import { tenantResolverMiddleware } from "./middleware/tenant-resolver.js";
+import { createRequestScopedDb } from "./db/request-context.js";
 import { healthRoutes } from "./routes/health.js";
 import { companyRoutes } from "./routes/companies.js";
 import { companySkillRoutes } from "./routes/company-skills.js";
@@ -105,6 +108,13 @@ export function shouldEnablePrivateHostnameGuard(opts: {
   );
 }
 
+export function shouldEnableTenantResolver(opts: {
+  deploymentMode: DeploymentMode;
+  deploymentExposure: DeploymentExposure;
+}): boolean {
+  return opts.deploymentMode === "authenticated" && opts.deploymentExposure === "public";
+}
+
 export async function createApp(
   db: Db,
   opts: {
@@ -136,6 +146,7 @@ export async function createApp(
   },
 ) {
   const app = express();
+  const requestDb = createRequestScopedDb(db);
 
   app.use(express.json({
     // Company import/export payloads can inline full portable packages.
@@ -160,17 +171,24 @@ export async function createApp(
       bindHost: opts.bindHost,
     }),
   );
+  app.use(tenantResolverMiddleware(db, {
+    enabled: shouldEnableTenantResolver({
+      deploymentMode: opts.deploymentMode,
+      deploymentExposure: opts.deploymentExposure,
+    }),
+  }));
+  app.use(tenantDbContextMiddleware(db));
   app.use(
-    actorMiddleware(db, {
+    actorMiddleware(requestDb, {
       deploymentMode: opts.deploymentMode,
       resolveSession: opts.resolveSession,
     }),
   );
-  app.use("/api/auth", authRoutes(db));
+  app.use("/api/auth", authRoutes(requestDb));
   if (opts.betterAuthHandler) {
     app.all("/api/auth/{*authPath}", opts.betterAuthHandler);
   }
-  app.use(llmRoutes(db));
+  app.use(llmRoutes(requestDb));
 
   const hostServicesDisposers = new Map<string, () => void>();
   const workerManager = opts.pluginWorkerManager ?? createPluginWorkerManager();
@@ -180,57 +198,57 @@ export async function createApp(
   api.use(boardMutationGuard());
   api.use(
     "/health",
-    healthRoutes(db, {
+      healthRoutes(requestDb, {
       deploymentMode: opts.deploymentMode,
       deploymentExposure: opts.deploymentExposure,
       authReady: opts.authReady,
       companyDeletionEnabled: opts.companyDeletionEnabled,
     }),
   );
-  api.use("/companies", companyRoutes(db, opts.storageService));
-  api.use(companySkillRoutes(db));
-  api.use(agentRoutes(db, { pluginWorkerManager: workerManager }));
-  api.use(assetRoutes(db, opts.storageService));
-  api.use(projectRoutes(db));
-  api.use(issueRoutes(db, opts.storageService, {
+  api.use("/companies", companyRoutes(requestDb, opts.storageService));
+  api.use(companySkillRoutes(requestDb));
+  api.use(agentRoutes(requestDb, { pluginWorkerManager: workerManager }));
+  api.use(assetRoutes(requestDb, opts.storageService));
+  api.use(projectRoutes(requestDb));
+  api.use(issueRoutes(requestDb, opts.storageService, {
     feedbackExportService: opts.feedbackExportService,
     pluginWorkerManager: workerManager,
   }));
-  api.use(issueTreeControlRoutes(db));
-  api.use(routineRoutes(db, { pluginWorkerManager: workerManager }));
-  api.use(environmentRoutes(db, { pluginWorkerManager: workerManager }));
-  api.use(executionWorkspaceRoutes(db));
-  api.use(goalRoutes(db));
-  api.use(approvalRoutes(db, { pluginWorkerManager: workerManager }));
-  api.use(secretRoutes(db));
-  api.use(costRoutes(db, { pluginWorkerManager: workerManager }));
-  api.use(activityRoutes(db));
-  api.use(dashboardRoutes(db));
-  api.use(userProfileRoutes(db));
-  api.use(sidebarBadgeRoutes(db));
-  api.use(sidebarPreferenceRoutes(db));
-  api.use(inboxDismissalRoutes(db));
-  api.use(instanceSettingsRoutes(db));
+  api.use(issueTreeControlRoutes(requestDb));
+  api.use(routineRoutes(requestDb, { pluginWorkerManager: workerManager }));
+  api.use(environmentRoutes(requestDb, { pluginWorkerManager: workerManager }));
+  api.use(executionWorkspaceRoutes(requestDb));
+  api.use(goalRoutes(requestDb));
+  api.use(approvalRoutes(requestDb, { pluginWorkerManager: workerManager }));
+  api.use(secretRoutes(requestDb));
+  api.use(costRoutes(requestDb, { pluginWorkerManager: workerManager }));
+  api.use(activityRoutes(requestDb));
+  api.use(dashboardRoutes(requestDb));
+  api.use(userProfileRoutes(requestDb));
+  api.use(sidebarBadgeRoutes(requestDb));
+  api.use(sidebarPreferenceRoutes(requestDb));
+  api.use(inboxDismissalRoutes(requestDb));
+  api.use(instanceSettingsRoutes(requestDb));
   if (opts.databaseBackupService) {
     api.use(instanceDatabaseBackupRoutes(opts.databaseBackupService));
   }
-  const pluginRegistry = pluginRegistryService(db);
+  const pluginRegistry = pluginRegistryService(requestDb);
   const eventBus = createPluginEventBus();
   setPluginEventBus(eventBus);
-  const jobStore = pluginJobStore(db);
-  const lifecycle = pluginLifecycleManager(db, { workerManager });
+  const jobStore = pluginJobStore(requestDb);
+  const lifecycle = pluginLifecycleManager(requestDb, { workerManager });
   const scheduler = createPluginJobScheduler({
-    db,
+    db: requestDb,
     jobStore,
     workerManager,
   });
   const toolDispatcher = createPluginToolDispatcher({
     workerManager,
     lifecycleManager: lifecycle,
-    db,
+    db: requestDb,
   });
   const jobCoordinator = createPluginJobCoordinator({
-    db,
+    db: requestDb,
     lifecycle,
     scheduler,
     jobStore,
@@ -273,7 +291,7 @@ export async function createApp(
   );
   api.use(
     pluginRoutes(
-      db,
+      requestDb,
       loader,
       { scheduler, jobStore },
       { workerManager },
@@ -283,7 +301,7 @@ export async function createApp(
   );
   api.use(adapterRoutes());
   api.use(
-    accessRoutes(db, {
+    accessRoutes(requestDb, {
       deploymentMode: opts.deploymentMode,
       deploymentExposure: opts.deploymentExposure,
       bindHost: opts.bindHost,

@@ -1,0 +1,33 @@
+app = "acent-ax-api"
+primary_region = "nrt"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  HOST = "0.0.0.0"
+  PORT = "3100"
+  SERVE_UI = "true"
+  PAPERCLIP_DEPLOYMENT_MODE = "authenticated"
+  PAPERCLIP_DEPLOYMENT_EXPOSURE = "public"
+  PAPERCLIP_BIND = "lan"
+  PAPERCLIP_AUTH_BASE_URL_MODE = "explicit"
+  PAPERCLIP_PUBLIC_URL = "https://acent-ax-api.fly.dev"
+  PAPERCLIP_AUTH_PUBLIC_BASE_URL = "https://acent-ax-api.fly.dev"
+  BETTER_AUTH_URL = "https://acent-ax-api.fly.dev"
+  PAPERCLIP_ALLOWED_HOSTNAMES = "acent-ax-api.fly.dev,acent.ax.acent.com"
+  PAPERCLIP_DB_BACKUP_ENABLED = "false"
+  HEARTBEAT_SCHEDULER_ENABLED = "false"
+
+[http_service]
+  internal_port = 3100
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1

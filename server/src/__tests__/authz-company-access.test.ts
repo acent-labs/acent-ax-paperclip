@@ -4,10 +4,12 @@ import { assertBoardOrgAccess, assertCompanyAccess, hasBoardOrgAccess } from "..
 function makeReq(input: {
   method?: string;
   actor: Express.Request["actor"];
+  tenantContext?: Express.Request["tenantContext"];
 }) {
   return {
     method: input.method ?? "GET",
     actor: input.actor,
+    tenantContext: input.tenantContext,
   } as Express.Request;
 }
 
@@ -103,6 +105,115 @@ describe("assertCompanyAccess", () => {
     });
 
     expect(() => assertCompanyAccess(req, "company-1")).not.toThrow();
+  });
+
+  it("rejects a board request when the host tenant and company membership tenant differ", () => {
+    const req = makeReq({
+      method: "GET",
+      tenantContext: {
+        enforced: true,
+        host: "acme.ax.acent.com",
+        tenantId: "tenant-acme",
+        slug: "acme",
+        status: "resolved",
+      },
+      actor: {
+        type: "board",
+        userId: "user-1",
+        source: "session",
+        companyIds: ["company-1"],
+        memberships: [
+          {
+            companyId: "company-1",
+            tenantId: "tenant-other",
+            membershipRole: "operator",
+            status: "active",
+          },
+        ],
+      },
+    });
+
+    expect(() => assertCompanyAccess(req, "company-1")).toThrow("Company does not belong to the request tenant");
+  });
+
+  it("allows a board request when the host tenant and company membership tenant match", () => {
+    const req = makeReq({
+      method: "GET",
+      tenantContext: {
+        enforced: true,
+        host: "acme.ax.acent.com",
+        tenantId: "tenant-acme",
+        slug: "acme",
+        status: "resolved",
+      },
+      actor: {
+        type: "board",
+        userId: "user-1",
+        source: "session",
+        companyIds: ["company-1"],
+        memberships: [
+          {
+            companyId: "company-1",
+            tenantId: "tenant-acme",
+            membershipRole: "operator",
+            status: "active",
+          },
+        ],
+      },
+    });
+
+    expect(() => assertCompanyAccess(req, "company-1")).not.toThrow();
+  });
+
+  it("rejects unresolved tenant hosts before company access is granted", () => {
+    const req = makeReq({
+      method: "GET",
+      tenantContext: {
+        enforced: true,
+        host: "unknown.ax.acent.com",
+        tenantId: null,
+        slug: null,
+        status: "unresolved",
+      },
+      actor: {
+        type: "board",
+        userId: "user-1",
+        source: "session",
+        companyIds: ["company-1"],
+        memberships: [
+          {
+            companyId: "company-1",
+            tenantId: "tenant-acme",
+            membershipRole: "operator",
+            status: "active",
+          },
+        ],
+      },
+    });
+
+    expect(() => assertCompanyAccess(req, "company-1")).toThrow("Request host is not mapped to an active tenant");
+  });
+
+  it("rejects an agent request when its company tenant differs from the host tenant", () => {
+    const req = makeReq({
+      method: "GET",
+      tenantContext: {
+        enforced: true,
+        host: "acme.ax.acent.com",
+        tenantId: "tenant-acme",
+        slug: "acme",
+        status: "resolved",
+      },
+      actor: {
+        type: "agent",
+        agentId: "agent-1",
+        companyId: "company-1",
+        tenantId: "tenant-other",
+        source: "agent_key",
+      },
+    });
+
+    expect(() => assertCompanyAccess(req, "company-1")).toThrow("Company does not belong to the request tenant");
   });
 });
 

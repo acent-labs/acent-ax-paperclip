@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { Request, RequestHandler } from "express";
 import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agentApiKeys, agents, companyMemberships, instanceUserRoles } from "@paperclipai/db";
+import { agentApiKeys, agents, companies, companyMemberships, instanceUserRoles } from "@paperclipai/db";
 import { verifyLocalAgentJwt } from "../agent-auth-jwt.js";
 import type { DeploymentMode } from "@paperclipai/shared";
 import type { BetterAuthSessionResult } from "../auth/better-auth.js";
@@ -20,6 +20,14 @@ interface ActorMiddlewareOptions {
 
 export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHandler {
   const boardAuth = boardAuthService(db);
+  async function getCompanyTenantId(companyId: string) {
+    return db
+      .select({ tenantId: companies.tenantId })
+      .from(companies)
+      .where(eq(companies.id, companyId))
+      .then((rows) => rows[0]?.tenantId ?? null);
+  }
+
   return async (req, _res, next) => {
     req.actor =
       opts.deploymentMode === "local_trusted"
@@ -58,10 +66,12 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
             db
               .select({
                 companyId: companyMemberships.companyId,
+                tenantId: companies.tenantId,
                 membershipRole: companyMemberships.membershipRole,
                 status: companyMemberships.status,
               })
               .from(companyMemberships)
+              .innerJoin(companies, eq(companyMemberships.companyId, companies.id))
               .where(
                 and(
                   eq(companyMemberships.principalType, "user"),
@@ -152,6 +162,7 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
         type: "agent",
         agentId: claims.sub,
         companyId: claims.company_id,
+        tenantId: await getCompanyTenantId(claims.company_id),
         keyId: undefined,
         runId: runIdHeader || claims.run_id || undefined,
         source: "agent_jwt",
@@ -180,6 +191,7 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
       type: "agent",
       agentId: key.agentId,
       companyId: key.companyId,
+      tenantId: await getCompanyTenantId(key.companyId),
       keyId: key.id,
       runId: runIdHeader || undefined,
       source: "agent_key",

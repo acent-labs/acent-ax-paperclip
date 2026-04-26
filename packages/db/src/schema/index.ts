@@ -1,3 +1,6 @@
+export { tenants } from "./tenants.js";
+export { tenantMemberships } from "./tenant_memberships.js";
+export { tenantDomains } from "./tenant_domains.js";
 export { companies } from "./companies.js";
 export { companyLogos } from "./company_logos.js";
 export { authUsers, authSessions, authAccounts, authVerifications } from "./auth.js";

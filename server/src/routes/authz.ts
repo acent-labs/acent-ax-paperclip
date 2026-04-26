@@ -41,6 +41,7 @@ export function assertInstanceAdmin(req: Request) {
 
 export function assertCompanyAccess(req: Request, companyId: string) {
   assertAuthenticated(req);
+  assertTenantCompanyAccess(req, companyId);
   if (req.actor.type === "agent" && req.actor.companyId !== companyId) {
     throw forbidden("Agent key cannot access another company");
   }
@@ -59,6 +60,39 @@ export function assertCompanyAccess(req: Request, companyId: string) {
       if (membership.membershipRole === "viewer") {
         throw forbidden("Viewer access is read-only");
       }
+    }
+  }
+}
+
+function assertTenantCompanyAccess(req: Request, companyId: string) {
+  const tenantContext = req.tenantContext;
+  if (!tenantContext?.enforced) return;
+
+  if (tenantContext.status !== "resolved" || !tenantContext.tenantId) {
+    throw forbidden("Request host is not mapped to an active tenant");
+  }
+
+  if (req.actor.type === "agent") {
+    if (req.actor.companyId !== companyId) return;
+    if (!req.actor.tenantId) {
+      throw forbidden("Company is not assigned to the request tenant");
+    }
+    if (req.actor.tenantId !== tenantContext.tenantId) {
+      throw forbidden("Company does not belong to the request tenant");
+    }
+    return;
+  }
+
+  if (req.actor.type === "board" && req.actor.source !== "local_implicit") {
+    const membership = req.actor.memberships?.find((item) => item.companyId === companyId);
+    if (!membership) {
+      return;
+    }
+    if (!membership.tenantId) {
+      throw forbidden("Company is not assigned to the request tenant");
+    }
+    if (membership.tenantId !== tenantContext.tenantId) {
+      throw forbidden("Company does not belong to the request tenant");
     }
   }
 }

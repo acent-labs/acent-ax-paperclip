@@ -39,6 +39,14 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     return value === true || value === "true" || value === "1";
   }
 
+  function getRequestTenantId(req: Request) {
+    if (!req.tenantContext?.enforced) return null;
+    if (req.tenantContext.status !== "resolved" || !req.tenantContext.tenantId) {
+      throw forbidden("Request host is not mapped to an active tenant");
+    }
+    return req.tenantContext.tenantId;
+  }
+
   function parseDateQuery(value: unknown, field: string) {
     if (typeof value !== "string" || value.trim().length === 0) return undefined;
     const parsed = new Date(value);
@@ -89,7 +97,11 @@ export function companyRoutes(db: Db, storage?: StorageService) {
 
   router.get("/", async (req, res) => {
     assertBoard(req);
-    const result = await svc.list();
+    const requestTenantId = getRequestTenantId(req);
+    let result = await svc.list();
+    if (requestTenantId) {
+      result = result.filter((company) => company.tenantId === requestTenantId);
+    }
     if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) {
       res.json(result);
       return;
@@ -100,15 +112,23 @@ export function companyRoutes(db: Db, storage?: StorageService) {
 
   router.get("/stats", async (req, res) => {
     assertBoard(req);
+    const requestTenantId = getRequestTenantId(req);
+    const tenantScopedCompanyIds = requestTenantId
+      ? new Set((await svc.list())
+        .filter((company) => company.tenantId === requestTenantId)
+        .map((company) => company.id))
+      : null;
     const allowed = req.actor.source === "local_implicit" || req.actor.isInstanceAdmin
       ? null
       : new Set(req.actor.companyIds ?? []);
     const stats = await svc.stats();
-    if (!allowed) {
+    if (!allowed && !tenantScopedCompanyIds) {
       res.json(stats);
       return;
     }
-    const filtered = Object.fromEntries(Object.entries(stats).filter(([companyId]) => allowed.has(companyId)));
+    const filtered = Object.fromEntries(Object.entries(stats).filter(([companyId]) =>
+      (!allowed || allowed.has(companyId)) && (!tenantScopedCompanyIds || tenantScopedCompanyIds.has(companyId))
+    ));
     res.json(filtered);
   });
 

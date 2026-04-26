@@ -64,10 +64,12 @@ export function boardAuthService(db: Db) {
       db
         .select({
           companyId: companyMemberships.companyId,
+          tenantId: companies.tenantId,
           membershipRole: companyMemberships.membershipRole,
           status: companyMemberships.status,
         })
         .from(companyMemberships)
+        .innerJoin(companies, eq(companyMemberships.companyId, companies.id))
         .where(
           and(
             eq(companyMemberships.principalType, "user"),

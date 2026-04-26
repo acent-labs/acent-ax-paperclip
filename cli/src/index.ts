@@ -8,6 +8,7 @@ import { heartbeatRun } from "./commands/heartbeat-run.js";
 import { runCommand } from "./commands/run.js";
 import { bootstrapCeoInvite } from "./commands/auth-bootstrap-ceo.js";
 import { dbBackupCommand } from "./commands/db-backup.js";
+import { tenantProvisionCommand } from "./commands/tenant-provision.js";
 import { registerEnvLabCommands } from "./commands/env-lab.js";
 import { registerContextCommands } from "./commands/client/context.js";
 import { registerCompanyCommands } from "./commands/client/company.js";
@@ -94,6 +95,25 @@ program
   .option("--json", "Print backup metadata as JSON")
   .action(async (opts) => {
     await dbBackupCommand(opts);
+  });
+
+program
+  .command("tenant:provision")
+  .description("Provision a hosted SaaS tenant, domain, primary company, and optional owner membership")
+  .requiredOption("--slug <slug>", "Tenant slug, for example acme")
+  .requiredOption("--domain <host>", "Tenant hostname, for example acme.ax.acent.com")
+  .option("--name <name>", "Tenant display name")
+  .option("--plan <plan>", "Tenant plan label")
+  .option("--company-id <id>", "Attach an existing company instead of creating one")
+  .option("--company-name <name>", "Primary company name when creating a new company")
+  .option("--owner-user-id <id>", "Existing auth user id to make tenant/company owner")
+  .option("--owner-email <email>", "Look up an existing auth user by email and make them owner")
+  .option("--db-url <url>", "Database connection URL override")
+  .option("-c, --config <path>", "Path to config file")
+  .option("-d, --data-dir <path>", DATA_DIR_OPTION_HELP)
+  .option("--json", "Print provision result as JSON")
+  .action(async (opts) => {
+    await tenantProvisionCommand(opts);
   });
 
 program

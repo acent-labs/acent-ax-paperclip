@@ -27,6 +27,7 @@ const storybookWorktreeRoot = `${storybookRepoRoot}/.paperclip/worktrees`;
 export const storybookCompanies: Company[] = [
   {
     id: "company-storybook",
+    tenantId: null,
     name: "Paperclip Storybook",
     description: "Fixture company for isolated UI review.",
     status: "active",
@@ -49,6 +50,7 @@ export const storybookCompanies: Company[] = [
   },
   {
     id: "company-research",
+    tenantId: null,
     name: "Research Bureau",
     description: "A second active company for rail and switcher state coverage.",
     status: "active",
@@ -71,6 +73,7 @@ export const storybookCompanies: Company[] = [
   },
   {
     id: "company-paused",
+    tenantId: null,
     name: "Launch Ops",
     description: "Paused company for inactive switcher treatment.",
     status: "paused",
