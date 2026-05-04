@@ -40,7 +40,7 @@ jobs:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
       - name: Verify Supabase database secret
-        run: flyctl secrets list --app "$FLY_APP" | grep -E '^DATABASE_URL[[:space:]]'
+        run: flyctl secrets list --app "$FLY_APP" | grep -qE '(^|[[:space:]])DATABASE_URL([[:space:]]|$)'
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
