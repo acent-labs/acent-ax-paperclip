@@ -1,4 +1,4 @@
-app = "acent-ax-api"
+app = "acent-ax-engine"
 primary_region = "nrt"
 
 [build]
@@ -12,10 +12,10 @@ primary_region = "nrt"
   PAPERCLIP_DEPLOYMENT_EXPOSURE = "public"
   PAPERCLIP_BIND = "lan"
   PAPERCLIP_AUTH_BASE_URL_MODE = "explicit"
-  PAPERCLIP_PUBLIC_URL = "https://acent-ax-api.fly.dev"
-  PAPERCLIP_AUTH_PUBLIC_BASE_URL = "https://acent-ax-api.fly.dev"
-  BETTER_AUTH_URL = "https://acent-ax-api.fly.dev"
-  PAPERCLIP_ALLOWED_HOSTNAMES = "acent-ax-api.fly.dev,acent.ax.acent.com"
+  PAPERCLIP_PUBLIC_URL = "https://acent-ax-engine.fly.dev"
+  PAPERCLIP_AUTH_PUBLIC_BASE_URL = "https://acent-ax-engine.fly.dev"
+  BETTER_AUTH_URL = "https://acent-ax-engine.fly.dev"
+  PAPERCLIP_ALLOWED_HOSTNAMES = "acent-ax-engine.fly.dev,acent.ax.acent.com"
   PAPERCLIP_DB_BACKUP_ENABLED = "false"
   HEARTBEAT_SCHEDULER_ENABLED = "false"
 

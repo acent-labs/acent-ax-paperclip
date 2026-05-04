@@ -5,19 +5,27 @@ on:
     branches:
       - master
   workflow_dispatch:
+    inputs:
+      fly_app:
+        description: Fly app to deploy
+        required: true
+        type: string
+        default: acent-ax-engine
 
 permissions:
   contents: read
 
 concurrency:
-  group: fly-deploy-accent-ax-api-${{ github.ref }}
+  group: fly-deploy-${{ inputs.fly_app || 'acent-ax-engine' }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Deploy acent-ax-api
+    name: Deploy ${{ inputs.fly_app || 'acent-ax-engine' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      FLY_APP: ${{ inputs.fly_app || 'acent-ax-engine' }}
 
     steps:
       - name: Checkout repository
@@ -27,19 +35,24 @@ jobs:
         uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Validate Fly config
-        run: flyctl config validate --app acent-ax-api
+        run: flyctl config validate --app "$FLY_APP"
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Verify Supabase database secret
+        run: flyctl secrets list --app "$FLY_APP" | grep -E '^DATABASE_URL[[:space:]]'
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
       - name: Deploy to Fly.io
-        run: flyctl deploy --remote-only --ha=false --app acent-ax-api
+        run: flyctl deploy --remote-only --ha=false --app "$FLY_APP"
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
       - name: Verify health endpoint
         run: |
           for attempt in $(seq 1 12); do
-            if curl --fail --silent --show-error https://acent-ax-api.fly.dev/api/health; then
+            if curl --fail --silent --show-error https://acent-ax-engine.fly.dev/api/health; then
               exit 0
             fi
             echo "Health check failed, retrying (${attempt}/12)..."
