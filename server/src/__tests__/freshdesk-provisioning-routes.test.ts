@@ -68,6 +68,7 @@ describe("freshdesk provisioning routes", () => {
     });
     expect(mockCompanyService.create).toHaveBeenCalledWith(expect.objectContaining({
       tenantId: "11111111-1111-4111-8111-111111111111",
+      issuePrefix: "FD111111",
       name: "ACENT Flow - acme.freshdesk.com",
       requireBoardApprovalForNewAgents: false,
     }));

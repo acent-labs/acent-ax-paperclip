@@ -119,6 +119,14 @@ export function companyService(db: Db) {
     return normalized.slice(0, 3) || ISSUE_PREFIX_FALLBACK;
   }
 
+  function deriveIssuePrefixBaseFromInsert(data: typeof companies.$inferInsert) {
+    if (typeof data.issuePrefix === "string") {
+      const normalized = data.issuePrefix.toUpperCase().replace(/[^A-Z0-9]/g, "");
+      if (normalized) return normalized.slice(0, 12);
+    }
+    return deriveIssuePrefixBase(data.name);
+  }
+
   function suffixForAttempt(attempt: number) {
     if (attempt <= 1) return "";
     return "A".repeat(attempt - 1);
@@ -137,7 +145,7 @@ export function companyService(db: Db) {
   }
 
   async function createCompanyWithUniquePrefix(data: typeof companies.$inferInsert) {
-    const base = deriveIssuePrefixBase(data.name);
+    const base = deriveIssuePrefixBaseFromInsert(data);
     let suffix = 1;
     while (suffix < 10000) {
       const candidate = `${base}${suffixForAttempt(suffix)}`;
