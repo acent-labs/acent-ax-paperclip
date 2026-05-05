@@ -48,7 +48,7 @@ describe("freshdesk provisioning routes", () => {
       .post("/api/integrations/freshdesk/provision")
       .set("Authorization", "Bearer provision-token")
       .send({
-        acent_tenant_id: "tenant-1",
+        acent_tenant_id: "11111111-1111-4111-8111-111111111111",
         freshdesk_domain: "https://Acme.freshdesk.com/",
       });
 
@@ -67,6 +67,7 @@ describe("freshdesk provisioning routes", () => {
       control_panel_url: "https://acent-ax-engine.fly.dev/ACE/dashboard",
     });
     expect(mockCompanyService.create).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: "11111111-1111-4111-8111-111111111111",
       name: "ACENT Flow - acme.freshdesk.com",
       requireBoardApprovalForNewAgents: false,
     }));
@@ -75,7 +76,7 @@ describe("freshdesk provisioning routes", () => {
       metadata: {
         source: "freshdesk",
         freshdesk_domain: "acme.freshdesk.com",
-        acent_tenant_id: "tenant-1",
+        acent_tenant_id: "11111111-1111-4111-8111-111111111111",
       },
     }));
   });
@@ -84,7 +85,7 @@ describe("freshdesk provisioning routes", () => {
     const res = await request(createApp())
       .post("/api/integrations/freshdesk/provision")
       .send({
-        acent_tenant_id: "tenant-1",
+        acent_tenant_id: "11111111-1111-4111-8111-111111111111",
         freshdesk_domain: "acme.freshdesk.com",
       });
 
