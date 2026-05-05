@@ -125,11 +125,10 @@ export function companyService(db: Db) {
   }
 
   function isIssuePrefixConflict(error: unknown) {
-    const constraint = typeof error === "object" && error !== null && "constraint" in error
-      ? (error as { constraint?: string }).constraint
-      : typeof error === "object" && error !== null && "constraint_name" in error
-        ? (error as { constraint_name?: string }).constraint_name
-        : undefined;
+    const constraint = typeof error === "object" && error !== null
+      ? (error as { constraint?: string; constraint_name?: string }).constraint
+        ?? (error as { constraint?: string; constraint_name?: string }).constraint_name
+      : undefined;
     return typeof error === "object"
       && error !== null
       && "code" in error
