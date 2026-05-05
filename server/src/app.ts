@@ -43,6 +43,7 @@ import { assetRoutes } from "./routes/assets.js";
 import { accessRoutes } from "./routes/access.js";
 import { pluginRoutes } from "./routes/plugins.js";
 import { adapterRoutes } from "./routes/adapters.js";
+import { freshdeskProvisioningRoutes } from "./routes/freshdesk-provisioning.js";
 import { pluginUiStaticRoutes } from "./routes/plugin-ui-static.js";
 import { applyUiBranding } from "./ui-branding.js";
 import { logger } from "./middleware/logger.js";
@@ -206,6 +207,9 @@ export async function createApp(
     }),
   );
   api.use("/companies", companyRoutes(requestDb, opts.storageService));
+  api.use("/integrations/freshdesk", freshdeskProvisioningRoutes(requestDb, {
+    publicBaseUrl: opts.deploymentMode === "authenticated" ? process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL : undefined,
+  }));
   api.use(companySkillRoutes(requestDb));
   api.use(agentRoutes(requestDb, { pluginWorkerManager: workerManager }));
   api.use(assetRoutes(requestDb, opts.storageService));
