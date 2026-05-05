@@ -50,4 +50,14 @@ describeEmbeddedPostgres("companyService", () => {
 
     expect(created.issuePrefix).toBe("ACEA");
   });
+
+  it("uses an explicit issue prefix as the allocation base", async () => {
+    const created = await svc.create({
+      name: "ACENT Freshdesk",
+      issuePrefix: "FD2E705F",
+      requireBoardApprovalForNewAgents: false,
+    });
+
+    expect(created.issuePrefix).toBe("FD2E705F");
+  });
 });

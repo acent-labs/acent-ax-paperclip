@@ -38,6 +38,10 @@ function tenantSlugForDomain(tenantId: string, domain: string) {
   return `freshdesk-${normalized || "tenant"}-${tenantId.slice(0, 8)}`;
 }
 
+function issuePrefixForFreshdeskTenant(tenantId: string) {
+  return `FD${tenantId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+}
+
 async function ensureFreshdeskTenant(db: Db, input: { tenantId: string; domain: string; displayName: string }) {
   await db
     .insert(tenants)
@@ -114,6 +118,7 @@ export function freshdeskProvisioningRoutes(
       if (!company) {
         company = await companies.create({
           tenantId: input.acent_tenant_id,
+          issuePrefix: issuePrefixForFreshdeskTenant(input.acent_tenant_id),
           name: companyName,
           description: `Freshdesk tenant ${domain}`,
           budgetMonthlyCents: 0,
