@@ -6,11 +6,18 @@ import { actorMiddleware } from "../middleware/auth.js";
 function createSelectChain(rows: unknown[]) {
   return {
     from() {
-      return {
-        where() {
-          return Promise.resolve(rows);
-        },
-      };
+      return createWhereChain(rows);
+    },
+  };
+}
+
+function createWhereChain(rows: unknown[]) {
+  return {
+    innerJoin() {
+      return createWhereChain(rows);
+    },
+    where() {
+      return Promise.resolve(rows);
     },
   };
 }
