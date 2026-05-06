@@ -1,7 +1,8 @@
+import { createHash, randomBytes } from "node:crypto";
 import { Router } from "express";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
-import { tenantDomains, tenants, type Db } from "@paperclipai/db";
+import { invites, tenantDomains, tenants, type Db } from "@paperclipai/db";
 import { runWithTenantDbContext } from "../db/request-context.js";
 import { agentService, companyService } from "../services/index.js";
 
@@ -10,6 +11,8 @@ const provisionFreshdeskSchema = z.object({
   freshdesk_domain: z.string().trim().min(1),
   display_name: z.string().trim().min(1).optional(),
 });
+
+const FRESHDESK_BOOTSTRAP_INVITE_TTL_MS = 72 * 60 * 60 * 1000;
 
 function normalizeDomain(value: string) {
   return value
@@ -40,6 +43,31 @@ function tenantSlugForDomain(tenantId: string, domain: string) {
 
 function issuePrefixForFreshdeskTenant(tenantId: string) {
   return `FD${tenantId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+}
+
+function hashInviteToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function createFreshdeskBootstrapInviteToken() {
+  return `pcp_freshdesk_bootstrap_${randomBytes(24).toString("hex")}`;
+}
+
+function freshdeskBootstrapInviteDefaults(input: {
+  tenantId: string;
+  domain: string;
+  companyId: string;
+  companyName: string;
+}) {
+  return {
+    source: "freshdesk",
+    acent_tenant_id: input.tenantId,
+    freshdesk_domain: input.domain,
+    company_id: input.companyId,
+    company_name: input.companyName,
+    humanRole: "owner",
+    inviteMessage: "Freshdesk installer bootstrap invite for Paperclip admin access.",
+  };
 }
 
 async function ensureFreshdeskTenant(db: Db, input: { tenantId: string; domain: string; displayName: string }) {
@@ -75,12 +103,83 @@ async function ensureFreshdeskTenant(db: Db, input: { tenantId: string; domain: 
   }
 }
 
+async function ensureFreshdeskBootstrapInvite(db: Db, input: {
+  tenantId: string;
+  domain: string;
+  companyId: string;
+  companyName: string;
+  baseUrl: string;
+}) {
+  const now = new Date();
+  const activeInvites = await db
+    .select({ id: invites.id })
+    .from(invites)
+    .where(
+      and(
+        eq(invites.companyId, input.companyId),
+        eq(invites.inviteType, "bootstrap_ceo"),
+        isNull(invites.revokedAt),
+        isNull(invites.acceptedAt),
+        gt(invites.expiresAt, now),
+      ),
+    );
+
+  if (activeInvites.length > 0) {
+    await db
+      .update(invites)
+      .set({ revokedAt: now, updatedAt: now })
+      .where(
+        and(
+          eq(invites.companyId, input.companyId),
+          eq(invites.inviteType, "bootstrap_ceo"),
+          isNull(invites.revokedAt),
+          isNull(invites.acceptedAt),
+          gt(invites.expiresAt, now),
+        ),
+      );
+  }
+
+  const token = createFreshdeskBootstrapInviteToken();
+  const expiresAt = new Date(Date.now() + FRESHDESK_BOOTSTRAP_INVITE_TTL_MS);
+  await db.insert(invites).values({
+    companyId: input.companyId,
+    inviteType: "bootstrap_ceo",
+    tokenHash: hashInviteToken(token),
+    allowedJoinTypes: "human",
+    defaultsPayload: freshdeskBootstrapInviteDefaults(input),
+    expiresAt,
+    invitedByUserId: "freshdesk-provisioning",
+  });
+
+  const baseUrl = input.baseUrl.replace(/\/+$/, "");
+  return {
+    status: activeInvites.length > 0 ? "reissued" as const : "created" as const,
+    inviteActive: true,
+    inviteUrl: baseUrl ? `${baseUrl}/invite/${token}` : `/invite/${token}`,
+    expiresAt,
+  };
+}
+
 export function freshdeskProvisioningRoutes(
   db: Db,
   opts?: {
     publicBaseUrl?: string;
     companies?: Pick<ReturnType<typeof companyService>, "list" | "create">;
     agents?: Pick<ReturnType<typeof agentService>, "list" | "create">;
+    adminInvites?: {
+      ensure: (input: {
+        tenantId: string;
+        domain: string;
+        companyId: string;
+        companyName: string;
+        baseUrl: string;
+      }) => Promise<{
+        status: "created" | "reissued";
+        inviteActive: boolean;
+        inviteUrl: string | null;
+        expiresAt: Date | null;
+      }>;
+    };
   },
 ) {
   const router = Router();
@@ -165,6 +264,21 @@ export function freshdeskProvisioningRoutes(
       : await runWithTenantDbContext(db, { tenantId: input.acent_tenant_id }, provision);
 
     const baseUrl = (opts?.publicBaseUrl || process.env.PAPERCLIP_PUBLIC_URL || process.env.BETTER_AUTH_URL || "").replace(/\/+$/, "");
+    const adminInvite = opts?.adminInvites
+      ? await opts.adminInvites.ensure({
+          tenantId: input.acent_tenant_id,
+          domain,
+          companyId: company.id,
+          companyName: company.name,
+          baseUrl,
+        })
+      : await ensureFreshdeskBootstrapInvite(db, {
+          tenantId: input.acent_tenant_id,
+          domain,
+          companyId: company.id,
+          companyName: company.name,
+          baseUrl,
+        });
     const companyPath = company.issuePrefix ? `/${company.issuePrefix}/dashboard` : "/dashboard";
     res.status(200).json({
       company: {
@@ -178,6 +292,12 @@ export function freshdeskProvisioningRoutes(
       },
       workflow_id: null,
       control_panel_url: `${baseUrl}${companyPath}`,
+      admin_access: {
+        status: adminInvite.status,
+        invite_active: adminInvite.inviteActive,
+        invite_url: adminInvite.inviteUrl,
+        expires_at: adminInvite.expiresAt?.toISOString() ?? null,
+      },
     });
   });
 
