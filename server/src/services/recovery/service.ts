@@ -43,6 +43,11 @@ const ACTIVE_RUN_OUTPUT_EVIDENCE_TAIL_BYTES = 8 * 1024;
 const STRANDED_ISSUE_RECOVERY_ORIGIN_KIND = RECOVERY_ORIGIN_KINDS.strandedIssueRecovery;
 const STALE_ACTIVE_RUN_EVALUATION_ORIGIN_KIND = RECOVERY_ORIGIN_KINDS.staleActiveRunEvaluation;
 const DEFERRED_WAKE_CONTEXT_KEY = "_paperclipWakeContext";
+const RECOVERY_CONTROL_ORIGIN_KINDS = [
+  RECOVERY_ORIGIN_KINDS.strandedIssueRecovery,
+  RECOVERY_ORIGIN_KINDS.issueGraphLivenessEscalation,
+  RECOVERY_ORIGIN_KINDS.staleActiveRunEvaluation,
+] satisfies string[];
 
 type RecoveryWakeupOptions = {
   source?: "timer" | "assignment" | "on_demand" | "automation";
@@ -1248,6 +1253,10 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
     latestRun: LatestIssueRun;
     previousStatus: "todo" | "in_progress";
   }) {
+    if (RECOVERY_CONTROL_ORIGIN_KINDS.includes(input.issue.originKind as (typeof RECOVERY_CONTROL_ORIGIN_KINDS)[number])) {
+      return null;
+    }
+
     const existing = await findOpenStrandedIssueRecoveryIssue(input.issue.companyId, input.issue.id);
     if (existing) return existing;
 
@@ -1412,6 +1421,7 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
           isNull(issues.assigneeUserId),
           inArray(issues.status, ["todo", "in_progress"]),
           sql`${issues.assigneeAgentId} is not null`,
+          notInArray(issues.originKind, RECOVERY_CONTROL_ORIGIN_KINDS),
         ),
       );
 

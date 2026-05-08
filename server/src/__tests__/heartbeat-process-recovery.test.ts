@@ -459,6 +459,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     retryReason?: "assignment_recovery" | "issue_continuation_needed" | null;
     assignToUser?: boolean;
     activePauseHold?: boolean;
+    originKind?: string | null;
   }) {
     const companyId = randomUUID();
     const agentId = randomUUID();
@@ -551,6 +552,9 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
         executionRunId: null,
         issueNumber: input.activePauseHold ? 2 : 1,
         identifier: `${issuePrefix}-${input.activePauseHold ? 2 : 1}`,
+        originKind: input.originKind ?? "manual",
+        originId: input.originKind ? rootIssueId : null,
+        originRunId: input.originKind ? runId : null,
         startedAt: input.status === "in_progress" ? now : null,
       },
     ]);
@@ -1481,6 +1485,36 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
 
     const comments = await db.select().from(issueComments).where(eq(issueComments.issueId, issueId));
     expect(comments).toHaveLength(0);
+
+    const wakeups = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, agentId));
+    expect(wakeups).toHaveLength(1);
+  });
+
+  it("does not recover recovery-owned issues again", async () => {
+    const { companyId, agentId, issueId } = await seedStrandedIssueFixture({
+      status: "todo",
+      runStatus: "failed",
+      retryReason: "assignment_recovery",
+      originKind: "stranded_issue_recovery",
+    });
+    const heartbeat = heartbeatService(db);
+
+    const result = await heartbeat.reconcileStrandedAssignedIssues();
+    expect(result.dispatchRequeued).toBe(0);
+    expect(result.continuationRequeued).toBe(0);
+    expect(result.escalated).toBe(0);
+    expect(result.skipped).toBe(0);
+    expect(result.issueIds).toEqual([]);
+
+    const issue = await db.select().from(issues).where(eq(issues.id, issueId)).then((rows) => rows[0] ?? null);
+    expect(issue?.status).toBe("todo");
+
+    const recoveryIssues = await db
+      .select()
+      .from(issues)
+      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "stranded_issue_recovery")));
+    expect(recoveryIssues).toHaveLength(1);
+    expect(recoveryIssues[0]?.id).toBe(issueId);
 
     const wakeups = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, agentId));
     expect(wakeups).toHaveLength(1);
